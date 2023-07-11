@@ -3,7 +3,7 @@
 ## Recursive Queries
 
 Materialize has a unique `WITH MUTUALLY RECURSIVE` syntactic block that allows you the full power of recursive and iterative query constructions.
-Recursive queries can sound intimidating, so we'll build up an example using our auction data.
+This section will get you experience using this construct, through a worked example with our auction data.
 
 Folks running an auction site are plausibly understandably interested in fraud. 
 There are a lot of ways this can happen, but one of the ways folks have flagged is when you have *cycles* of transactions amount accounts. 
@@ -16,8 +16,76 @@ For example, A bids on something B sells, B bids on something C sells, and C bid
 Our `bids` collection has a column `buyer` and our `auctions` collection has a column `seller`.
 They are connected by the `bids.auction_id` and `auctions.id` columns.
 Write a query that looks for cycles of accounts that bids on auctions by accounts that bid on auctions by accounts that ... on auctions by the original account.
+It may help to start with a query that considers pairs of accounts, then triples, etc in order to see how the pattern generalizes.
+
+Can you extend the query to report the length of the cycle?
+Can you extend the query to report the maximum amount of money that might flow along each cycle, defined as the least amount bid on each cycle.
 
 ---
+
+<details>
+<summary>Example SQL challenge answers</summary>
+
+To sniff out the potential cycles, we start with a (non-recursive) definition of a single link, and then repeatedly expand it.
+```sql
+WITH MUTUALLY RECURSIVE
+    -- directed link between two accounts.
+    link (source bigint, target bigint) AS (
+        SELECT bids.id as source, auctions.seller as target
+        FROM bids, auctions
+        WHERE bids.auction_id = auctions.id
+    ),
+    -- directed chain between two accounts
+    chain (source bigint, target bigint) AS (
+        SELECT chain.source, link.target
+        FROM chain, link
+        WHERE chain.target = link.source
+        UNION
+        SELECT * FROM link
+    )
+-- those accounts that loop back to themselves.
+SELECT source 
+FROM chain 
+WHERE chain.source = chain.target;
+```
+
+In a more complicated query, we can accumulate the maximum amount bid along the cycle, and count the length at the same time.
+It is important to break ties by the cycle length, as otherwise we may continue to count up higher and higher, rather than converge to the shortest cycle with for any given value.
+```sql
+WITH MUTUALLY RECURSIVE
+    -- directed link between two accounts, with bid amount.
+    link (source bigint, target bigint, amount integer, hops integer) AS (
+        SELECT bids.id as source, auctions.seller as target, amount, 1
+        FROM bids, auctions
+        WHERE bids.auction_id = auctions.id
+    ),
+    -- directed chain between two accounts, with minimum bid and chain length.
+    chain (source bigint, target bigint, amount integer, hops integer) AS (
+        SELECT DISTINCT ON (source, target) source, target, amount, hops
+        FROM (
+            SELECT 
+                chain.source, 
+                link.target, 
+                CASE WHEN chain.amount < link.amount 
+                     THEN link.amount 
+                     ELSE chain.amount 
+                     END as amount,
+                chain.hops + link.hops as hops
+            FROM chain, link
+            WHERE chain.target = link.source
+            UNION ALL
+            SELECT * FROM link
+        )
+        -- Ordeing by `hops` ascending prevents unboundedly increase.
+        ORDER BY source, target, amount DESC, hops ASC
+    )
+-- those accounts that loop back to themselves.
+SELECT source, amount
+FROM chain 
+WHERE chain.source = chain.target;
+```
+
+</details>
 
 
 ## Integration with BI tools
@@ -25,3 +93,92 @@ Write a query that looks for cycles of accounts that bids on auctions by account
 ## Integration with `dbt`
 
 ## Query Diagnosis and Optimization
+
+Materialize can represent the same workload multiple ways, with different performance trade-offs.
+This section will get you experience framing the same task different ways, diagnosing their performance and costs, and choosing between alternatives.
+
+Let's imagine that in our auction data we want to provide a service that, when requested, informs a user of all other bids that are currently outbidding them in some auction.
+Let's start by preparing views that would determine this information.
+```sql
+-- Collect bids that are for currently active auctions
+CREATE VIEW active_bids AS
+SELECT
+    bids.id,
+    bids.buyer,
+    bids.auction_id,
+    bids.amount,
+    bids.bid_time
+FROM bids
+JOIN auctions ON bids.auction_id = auctions.id
+WHERE auctions.end_time > mz_now();
+```
+
+```sql
+-- Bids that are beating an active bid.
+CREATE VIEW out_bids AS
+SELECT
+    a1.id,
+    a1.buyer,
+    a1.auction_id,
+    a1.amount,
+    a1.bid_time,
+    a2.buyer AS other_buyer,
+    a2.amount AS other_amount
+FROM active_bids a1, active_bids a2
+WHERE a1.auction_id = a2.auction_id
+  AND a1.amount < a2.amount
+  AND a1.buyer != a2.buyer;
+```
+These views are stack on top of each other, and queries from `out_bids` should contain the results we are looking for.
+
+---
+**CHALLENGE**: Create two new clusters `pull` and `push` and use each of them to try out direct access to the view (`SELECT` from it) and indexed access (`CREATE INDEX` on `out_bids`).
+Compare the response latencies between the two, and also the memory use of each cluster (through the Console cluster dashboard).
+Use `EXPLAIN` to validate your understanding of why the two approaches have different characteristics.
+
+Can you come up with a hybrid approach that maintains *some* information as it changes, less than the `push` cluster but more than `pull`, and still responds almost as promptly as the `push` cluster?
+
+---
+
+<details>
+<summary>Example SQL challenge answers</summary>
+
+Let's start with a cluster that does not index the data, and just re-evaluates the query from scratch each time.
+```sql
+-- PULL: Re-evaluate from scratch.
+SET CLUSTER = pull;
+SELECT * FROM out_bids WHERE buyer = 500;
+EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
+```
+
+Next, let's consider a cluster that indexes the results.
+This should result in prompt response times, but should also use substantially more resources.
+Check if you can see the memory use through the Console cluster dashboard.
+```sql
+-- PUSH: Maintain for all bids in all open auctions.
+SET CLUSTER = push;
+CREATE INDEX out_bids_by_buyer ON out_bids (buyer);
+SELECT * FROM out_bids WHERE buyer = 500;
+EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
+```
+
+Finally, let's consider a cluster that indexes some of the data, meant to be a middle ground in terms of resources used and performance provided.
+```sql
+-- PUSHPULL: Maintain active_bids, evaluate out_bids.
+SET CLUSTER = pushpull;
+CREATE INDEX active_by_buyer ON active_bids (buyer);
+CREATE INDEX active_by_auction ON active_bids (auction_id);
+SELECT * FROM out_bids WHERE buyer = 500;
+EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
+```
+```sql
+-- Subscribe to a snapshot plus changefeed.
+COPY (
+    SUBSCRIBE (
+        SELECT auction_id, other_buyer, other_amount
+        FROM out_bids
+        WHERE buyer = 500
+    ) WITH (progress)
+) TO stdout;
+```
+</details>
