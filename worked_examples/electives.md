@@ -1,5 +1,16 @@
 # Electives
 
+We've put together an unordered collection of "electives": work that builds on what we've covered, and introduces new and more exploratory content. 
+These electives are available for you to choose from, in any order, as your appetite allows.
+There are fewer "correct answers" here, but each should have the opportunity to learn and do something interesting. 
+
+1. [`WITH MUTUALLY RECURSIVE` (e.g. auction bidder cycles)](#recursive-queries)
+1. [BI (Metabase) integration](#integration-with-bi-tools)
+1. [`dbt` integration](#integration-with-dbt)
+1. [Query optimization, performance diagnosis](#query-diagnosis-and-optimization)
+1. Sources, sinks (?)
+1. E-commerce stack
+
 ## Recursive Queries
 
 Materialize has a unique `WITH MUTUALLY RECURSIVE` syntactic block that allows you the full power of recursive and iterative query constructions.
