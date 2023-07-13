@@ -79,10 +79,7 @@ WITH MUTUALLY RECURSIVE
         SELECT 
             chain.source, 
             link.target, 
-            CASE WHEN chain.amount > link.amount 
-                    THEN link.amount 
-                    ELSE chain.amount 
-                    END as amount,
+            LEAST(chain.amount, link.amount) as amount,
             chain.hops + link.hops as hops
         FROM chain, link
         WHERE chain.target = link.source
@@ -152,10 +149,10 @@ WHERE a1.auction_id = a2.auction_id
   AND a1.amount < a2.amount
   AND a1.buyer != a2.buyer;
 ```
-These views are stack on top of each other, and queries from `out_bids` should contain the results we are looking for.
+These views are stacked on top of each other, and queries from `out_bids` should contain the results we are looking for.
 
 ---
-**CHALLENGE**: Create two new clusters `pull` and `push` and use each of them to try out direct access to the view (`SELECT` from it) and indexed access (`CREATE INDEX` on `out_bids`).
+**CHALLENGE**: Create two new clusters `pull` and `push` and use each of them to try out direct access to the view (`SELECT` from it) and indexed access (`CREATE INDEX` on `out_bids`), when looking on behalf of a specific user (say `500`).
 Compare the response latencies between the two, and also the memory use of each cluster (through the Console cluster dashboard).
 Use `EXPLAIN` to validate your understanding of why the two approaches have different characteristics.
 
@@ -182,12 +179,13 @@ EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
 ```
 </details>
 
-Can you come up with a hybrid approach that maintains *some* information as it changes, less than the `push` cluster but more than `pull`, and still responds almost as promptly as the `push` cluster?
+Can you come up with a hybrid approach that maintains *some* information as it changes, less than the `push` cluster but more than `pull`, and still responds almost as promptly as the `push` cluster? Hint: call your new cluster `pushpull`.
 
 <details>
 <summary>Example challenge answers</summary>
 
-Finally, let's consider a cluster that indexes some of the data, meant to be a middle ground in terms of resources used and performance provided.
+This cluster contains two indexes that make the join execution efficient, without expanding the data as much as an index on all of `out_bids` would.
+
 ```sql
 -- PUSHPULL: Maintain active_bids, evaluate out_bids.
 SET CLUSTER = pushpull;
@@ -196,19 +194,11 @@ CREATE INDEX active_by_auction ON active_bids (auction_id);
 SELECT * FROM out_bids WHERE buyer = 500;
 EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
 ```
-```sql
--- Subscribe to a snapshot plus changefeed.
-COPY (
-    SUBSCRIBE (
-        SELECT auction_id, other_buyer, other_amount
-        FROM out_bids
-        WHERE buyer = 500
-    ) WITH (progress)
-) TO stdout;
-```
+
+
 </details>
 
---
+---
 
 ## Build a game!
 

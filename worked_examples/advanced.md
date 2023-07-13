@@ -90,8 +90,6 @@ COMMIT;
 
 Materialize does not support all commands within transactions, for technical reasons that we can totally discuss if you are interested!
 
-
-
 ## Clusters and Materialized Views
 
 You and your colleagues may want to collaborate on the same data, in the same Materialize instance.
@@ -177,10 +175,19 @@ Explained Query:
 
 --- 
 
-**CHALLENGE:** Introduce the `mz_now()` constraint from the temporal filter section.
+**CHALLENGE:** Introduce a `mz_now() <= end_time` constraint to focus on recent auctions.
 Notice where that predicate appears, and the newly reported `Source` output. Use `EXPLAIN` with your modified view definition bounding `bids` (you can use `EXPLAIN VIEW <view name>` to get explanations for existing views). Confirm that both `auctions` and `bids` have a `Source` output that correspond to the bounds you introduced.
 
 ---
+
+You can also use our dataflow visualizer. 
+From the Materialize Console, navigate to "Connect", and then the "External tools" tab.
+You can `https://` to the HOST there, use the USER to log in, and provide an App password as generated below.
+This gives you access to several dataflow visualizers that can show you the shape of the dataflows, numbers of records that have moved along each edge, and number of records retained in each arrangement.
+
+This tool can be very helpful to see the difference in rendered query plans, as the information comes directly from the execution layer.
+
+You should also be able to use an experimental visualizer through the web console: clicking through clusters, to indexes, should have a "visualize" button to the right: this will present the same content in a similar form, without the navigation to a mysterious address.
 
 ## Temporal Filters and `mz_now()`
 
@@ -216,16 +223,59 @@ This can be especially helpful when your data are collections of events, which a
 
 When you create an index on the updated `max_bid_by_auction` view, will that index have a bounded footprint? What if anything might allow us to forget about records in `bids`? Will we just have to maintain all bids forever? What assumptions would allow you to update the view again in a way that will maintain only recent bids? How can you validate such an assumption?
 
+Use the dataflow visualizer to observe the number of records maintained in each arrangement, when each are filtered to only recent events.
+
+---
+
+
+## Append-only Optimizations
+
+Quite often, your continually changing data are often append-only: records are added and never removed.
+This would eventually overwhelm conventional databases, but it needn't overwhelm Materialize when it is instructed to maintain specific queries.
+
+The opportunities here are subtle. 
+If we are tracking the MAX of a column in an append-only collection, we can be clever and only retain the maximum value, rather than all possible values (which we might need if you could remove the current maximum).
+If we are keeping the `LIMIT 1` of an append-only collection, we can retain the best row itself rather than an entire collection.
+These tricks apply as well to operations on derived views as much as on raw collections.
+
+Let's take the example of maintaining the top bidder for each auction.
+We currently do this in `max_bid_by_auction`, though our instruction to Materialize is to first join `bids` and `auctions`, then determine the best bid for each auction.
+However, to do this we have indexed `bids` by `auction_id` up above; that's a lot of data and its just growing.
+Do we really need to keep *all* of that bid data, if it only ever grows?
+
+Alternately, we could *first* reduce `bids` and then join it with `auctions`.
+```sql
+-- Retain the top bid for each auction.
+CREATE VIEW max_bid_by_auctionid AS
+SELECT DISTINCT ON(auction_id) bids.*
+FROM bids
+ORDER BY auction_id, bids.amount DESC;
+
+-- Notice: just a join; no `DISTINCT ON` here.
+CREATE VIEW max_bid_by_auction_lean AS
+SELECT auction_id, amount, mbbai.id as bid_id
+FROM max_bid_by_auctionid mbbai, auctions
+WHERE bid_time <= end_time
+  AND mbbai.auction_id = auctions.id;
+```
+
+---
+
+**CHALLENGE**: Use the dataflow visualizer to observe the number of records maintained in the arrangement for `max_bid_by_auctionid`. You should also be able to use `EXPLAIN PHYSICAL PLAN` to observe that the `TopK` operator uses a special variant: `MonotonicTop1`.
+
+What happens if you first apply a temporal filter (`WHERE mz_now() <= ...`) to `bids`?
+Does that make sense?
+
 ---
 
 ## Join planning and Indexes
 
-Indexes (from `CREATE INDEX`) were helpful for maintaining results, and providing random access for `SELECT` queries with `WHERE column = literal` constraints.
-In addition, they can make joins substantially more efficient, because the joins can re-use the indexes instead of creating their own.
+We saw earlier how indexes (from `CREATE INDEX`) are helpful for maintaining results, and providing random access for `SELECT` queries with `WHERE column = literal` constraints.
+In addition, they can make joins substantially more efficient, because the joins can re-use existing indexes instead of creating their own.
 
 ```sql
 -- Examine the initial plan for the query.
-EXPLAIN VIEW max_bid_by_auction;
+EXPLAIN SELECT * FROM max_bid_by_auction;
 ```
 
 ```sql
@@ -235,48 +285,37 @@ CREATE INDEX auctions_by_id ON auctions (id);
 
 ```sql
 -- Re-examine the plan for the query.
-EXPLAIN VIEW max_bid_by_auction;
+EXPLAIN SELECT * FROM max_bid_by_auction;
 ```
-Notice the output now containts an entry for `Used Indexes`.
+Notice the output now contains an entry for `Used Indexes`.
 This tells us that we are able to make use of the index.
 
+To be entirely certain *how* we are using the index, we can dig deeper with `EXPLAIN PHYSICAL PLAN`
+```sql
+EXPLAIN PHYSICAL PLAN FOR SELECT * FROM max_bid_by_auction;
+```
+Notice this line, which communicates that we are directly passing arranged data in.
+```
+Get::PassArrangements materialize.public.auctions
+```
+
+By contrast, the `bids` collection is subjected to an `ArrangeBy` operator, meaning we will have to build an index as part of the query.
 By volume, `bids` is substantially larger than `auctions`.
 While our `auctions_by_id` index is helpful, it doesn't make the query pop yet.
-To do that, we'll also need an index on `bids` by `auction_id`.
+
+We could create an index on `bids`, but instead let's create an index on `max_bid_by_auctionid`, which will let us compare the two approaches.
 ```sql
-CREATE INDEX bids_by_auction_id ON bids (auction_id);
-```
-Let's look at the plan again.
-```sql
-EXPLAIN VIEW max_bid_by_auction;
-```
-There are two changes here, one clear and one more subtle.
-First, we have an additional used index: `bids_by_auction_id`.
-Second, the `Project` stage is lifted away from `Get materialize.public.bids`: Materialize concludes that it is more efficient to use the existing index than to re-read all the data and immediately project down to the relevant columns.
-
-## Append-only Optimizations
-
-Quite often, your continually changing data are often append-only: records are added and never removed.
-This would eventually overwhelm conventional databases, but it needn't overwhelm Materialize when it is instructed to maintain specific queries.
-
-Let's take the example of maintaining the top bidder for each auction.
-We currently do this in `max_bid_by_auction`, though our instruction to Materialize is to first join `bids` and `auctions`, then determine the best bid for each auction.
-However, to do this we have indexed `bids` by `auction_id` up above; that's a lot of data and its just growing.
-Do we really need to keep *all* of that data, if it only ever grows?
-
-If we directly instruct Materialize to maintain only the top bid for each auction, it can do so with substantially fewer resources than maintaining all of `bids`.
-```sql
--- Retain the top bid for each auction.
-CREATE VIEW max_bids_by_auctionid AS
-SELECT DISTINCT ON(auction_id) bids.*
-FROM bids
-ORDER BY auction_id, bids.amount DESC;
-
--- Index the view (by `auction_id`)
-CREATE DEFAULT INDEX ON max_bids_by_auctionid;
+CREATE INDEX mbbai ON max_bid_by_auctionid (auction_id);
 ```
 
+We can now look at the plan for `max_bid_by_auction_lean`, and see that it only passes through arrangements; it does not build any of its own.
+```sql
+EXPLAIN PHYSICAL PLAN FOR SELECT * FROM max_bid_by_auction_lean;
+```
 
-**Show off the TopK operator** 
+Performing this `SELECT` should cause no additional data to be arranged, and maintaining the view will require nothing more than the space for the results.
+Maintaining `COUNT(*)` of the results, for example, should have a nominal impact.
 
-**Push down the TopK operator**
+---
+
+**CHALLENGE**: Use a dataflow visualizer to check out the plan for a maintained `SELECT COUNT(*) FROM max_bid_by_auction_lean`. 
