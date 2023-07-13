@@ -101,7 +101,7 @@ FROM bids, auctions
 WHERE bids.auction_id = auctions.id;
 ```
 
-With such a view, we can ask for the greatest bid associated with each auction.
+Building on this view, we can ask for the greatest bid associated with each auction.
 ```sql
 -- Extract the maximum bid for each auction
 CREATE VIEW max_amount_by_auction AS
@@ -128,7 +128,7 @@ We don't have a reason to join these together at the moment, but they are availa
 
 With views defined, you can select out of the views as a handy shortcut.
 ```sql
-SELECT * FROM max_bid_by_auction
+SELECT * FROM max_bid_by_auction;
 ```
 A view is only a name given to a query definition, so each time you select from the view Materialize will re-execute your query.
 
@@ -181,6 +181,8 @@ Materialize's indexes allow you to "pre-pay" computation so that when you need r
 You may have noticed that the results to certain queries change.
 At the same time, it's potentially pretty annoying to have to visually scan `max_bid_by_auction` looking for changed results.
 Materialize augments `SELECT` with a subscription counterpart `SUBSCRIBE`, which provides the results `SELECT` would give you, followed by a continually running changefeed.
+
+You may want to use `psql` for these commands, as Materialize's web console SQL shell will beautify the output for you.
 
 ```sql
 -- You'll want to use `psql` to observe this.

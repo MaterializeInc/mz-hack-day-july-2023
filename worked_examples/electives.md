@@ -8,6 +8,7 @@ There are fewer "correct answers" here, but each should have the opportunity to 
 1. [BI (Metabase) integration](#integration-with-bi-tools)
 1. [`dbt` integration](#integration-with-dbt)
 1. [Query optimization, performance diagnosis](#query-diagnosis-and-optimization)
+1. [Build a game](#build-a-game).
 1. Sources, sinks (?)
 1. E-commerce stack
 
@@ -29,13 +30,9 @@ They are connected by the `bids.auction_id` and `auctions.id` columns.
 Write a query that looks for cycles of accounts that bids on auctions by accounts that bid on auctions by accounts that ... on auctions by the original account.
 It may help to start with a query that considers pairs of accounts, then triples, etc in order to see how the pattern generalizes.
 
-Can you extend the query to report the length of the cycle?
-Can you extend the query to report the maximum amount of money that might flow along each cycle, defined as the least amount bid on each cycle.
-
----
 
 <details>
-<summary>Example SQL challenge answers</summary>
+<summary>Example challenge answers</summary>
 
 To sniff out the potential cycles, we start with a (non-recursive) definition of a single link, and then repeatedly expand it.
 ```sql
@@ -59,9 +56,17 @@ SELECT source
 FROM chain 
 WHERE chain.source = chain.target;
 ```
+</details>
 
-In a more complicated query, we can accumulate the maximum amount bid along the cycle, and count the length at the same time.
-It is important to break ties by the cycle length, as otherwise we may continue to count up higher and higher, rather than converge to the shortest cycle with for any given value.
+
+Can you extend the query to report the length of the cycle?
+Can you extend the query to report the maximum amount of money that might flow along each cycle, defined as the least amount bid on each cycle.
+
+You may find the `(RETURN AT RECURSION LIMIT n)` clause to help you debug your queries.
+
+<details>
+<summary>Example challenge answers</summary>
+
 ```sql
 WITH MUTUALLY RECURSIVE
     -- directed link between two accounts, with bid amount.
@@ -70,33 +75,40 @@ WITH MUTUALLY RECURSIVE
         FROM bids, auctions
         WHERE bids.auction_id = auctions.id
     ),
+    candidates (source bigint, target bigint, amount integer, hops integer) AS (
+        SELECT 
+            chain.source, 
+            link.target, 
+            CASE WHEN chain.amount > link.amount 
+                    THEN link.amount 
+                    ELSE chain.amount 
+                    END as amount,
+            chain.hops + link.hops as hops
+        FROM chain, link
+        WHERE chain.target = link.source
+        UNION ALL
+        SELECT * FROM link
+    ),
     -- directed chain between two accounts, with minimum bid and chain length.
     chain (source bigint, target bigint, amount integer, hops integer) AS (
         SELECT DISTINCT ON (source, target) source, target, amount, hops
-        FROM (
-            SELECT 
-                chain.source, 
-                link.target, 
-                CASE WHEN chain.amount < link.amount 
-                     THEN link.amount 
-                     ELSE chain.amount 
-                     END as amount,
-                chain.hops + link.hops as hops
-            FROM chain, link
-            WHERE chain.target = link.source
-            UNION ALL
-            SELECT * FROM link
-        )
-        -- Ordeing by `hops` ascending prevents unboundedly increase.
+        FROM candidates
+        -- Ordeing by `hops` ascending prevents unbounded increase.
         ORDER BY source, target, amount DESC, hops ASC
     )
 -- those accounts that loop back to themselves.
-SELECT source, amount
-FROM chain 
+SELECT source, amount, hops
+FROM chain
 WHERE chain.source = chain.target;
 ```
 
 </details>
+
+Can you write a query from the output above that rediscovers the cycle from the evidence of the amount and hops? 
+Can you modify the query to leave breadcrumbs behind to make this discovery efficient and interactive?
+
+---
+
 
 
 ## Integration with BI tools
@@ -147,12 +159,8 @@ These views are stack on top of each other, and queries from `out_bids` should c
 Compare the response latencies between the two, and also the memory use of each cluster (through the Console cluster dashboard).
 Use `EXPLAIN` to validate your understanding of why the two approaches have different characteristics.
 
-Can you come up with a hybrid approach that maintains *some* information as it changes, less than the `push` cluster but more than `pull`, and still responds almost as promptly as the `push` cluster?
-
----
-
 <details>
-<summary>Example SQL challenge answers</summary>
+<summary>Example challenge answers</summary>
 
 Let's start with a cluster that does not index the data, and just re-evaluates the query from scratch each time.
 ```sql
@@ -172,6 +180,12 @@ CREATE INDEX out_bids_by_buyer ON out_bids (buyer);
 SELECT * FROM out_bids WHERE buyer = 500;
 EXPLAIN SELECT * FROM out_bids WHERE buyer = 500;
 ```
+</details>
+
+Can you come up with a hybrid approach that maintains *some* information as it changes, less than the `push` cluster but more than `pull`, and still responds almost as promptly as the `push` cluster?
+
+<details>
+<summary>Example challenge answers</summary>
 
 Finally, let's consider a cluster that indexes some of the data, meant to be a middle ground in terms of resources used and performance provided.
 ```sql
@@ -193,3 +207,15 @@ COPY (
 ) TO stdout;
 ```
 </details>
+
+--
+
+## Build a game!
+
+Materialize supports multiple interactive sessions, mutable tables, and the ability to frame application logic as views over those tables.
+In principle, this is sufficient to build an interactive game you can play with your neighbor.
+
+As an example, [this post](https://github.com/frankmcsherry/blog/blob/master/posts/2022-07-06.md) describes building Minesweeper logic in Materialize.
+The underlying tables are guess locations, and the views derived report on the counts of mines in adjacent cells, enough to play the game as if using a 1980s BBS.
+
+Alternately, Sudoku lends itself to concise SQL rules both to assess guesses, but also to provide hints for locations that must contain certain values. Can you take those prompts and wrap them in a `WITH MUTUALLY RECURSIVE` block to try and *solve* Sudoku problems using your rules?
