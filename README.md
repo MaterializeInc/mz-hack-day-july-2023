@@ -1,3 +1,5 @@
+![Materialize Hack Day](https://github.com/MaterializeInc/mz-hack-day-july-2023/assets/11527560/d11c8817-52ab-4aeb-8b10-8ad604e2bc2d)
+
 # Materialize Hack Day
 
 Welcome to the first in-person Materialize hack day! We're really excited to have you all join us at Materialize HQ. The goal of the event is to have folks try out Materialize for the first time, and to get participants comfortable on the platform in just a few short hours. In order to do that, we will introduce some key concepts, provide some sample code, and set you off to complete some SQL challenges on your own. (We'll be there to support you as you venture out!)
