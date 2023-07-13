@@ -84,7 +84,7 @@ materialize=> show columns from auctions;
 
 materialize=> 
 ```
-Of course, you could also `SELECT * FROM auctions` to see the column namse.
+Of course, you could also `SELECT * FROM auctions` to see the column names.
 As more auctions are introduced over time, this will become an increasingly unappealing way to get the column information.
 
 ## Building up business logic as views
