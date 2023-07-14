@@ -10,9 +10,9 @@ If you're familiar with Materialize, great! If you aren't, also great! We're goi
 
 The Hack Day will be split into three parts, all led by Frank McSherry, one of our co-founders:
 
-1. **[Introducing Materialize](https://github.com/MaterializeInc/mz-hack-day-july-2023/blob/main/worked_examples/introductory.md)**: a walkthrough of introductory concepts that begin to illustrate the power of Materialize.
-2. **[Advanced Concepts](https://github.com/MaterializeInc/mz-hack-day-july-2023/blob/main/worked_examples/advanced.md)**: once you've got the basics down, we'll move on to the features that make Materialize uniquely powerful.
-3. **[Electives](https://github.com/MaterializeInc/mz-hack-day-july-2023/blob/main/worked_examples/electives.md)**: now that you're a Materialize expert, dig deeper into advanced SQL, learn how Materialize can fit into your usual workflows, or try building on new sets of data.
+1. **[Introducing Materialize](/worked_examples/1-introductory.md)**: a walkthrough of introductory concepts that begin to illustrate the power of Materialize.
+2. **[Advanced Concepts](/worked_examples/2-advanced.md)**: once you've got the basics down, we'll move on to the features that make Materialize uniquely powerful.
+3. **[Electives](/worked_examples/3-electives.md)**: now that you're a Materialize expert, dig deeper into advanced SQL, learn how Materialize can fit into your usual workflows, or try building on new sets of data.
 
 Frank will introduce and explain each section of examples, and the Materialize team will be on hand as you work through them! We're here to learn what you love, fix what you don't, and help you be successful trying out Materialize.
 

@@ -1,7 +1,7 @@
 # Introducing Materialize
 
 Materialize is a SQL database / data warehouse, one that should feel both familiar (because of SQL) but also surprisingly new at a few key moments.
-Our goal is this tour is to get you situated on familiar SQL ground, and then build up to the surprising and we hope eye-opening moments.
+Our goal in this tour is to get you situated on familiar SQL ground, and then build up to the surprising and — we hope — eye-opening moments.
 
 Here's the sequence of introductory concepts, linked (and exciting call-out moments!):
 1. [Create a table, insert, select](#creating-updating-and-inspecting-tables)
@@ -10,11 +10,9 @@ Here's the sequence of introductory concepts, linked (and exciting call-out mome
 1. [Create an index (you can index views!)](#using-indexes-to-make-views-fast)
 1. [`SUBSCRIBE` (you can get a view changefeed!)](#subscribing-to-changes)
 
+## Creating, updating, and inspecting tables
 
-
-## Creating, updating, and inspecting tables.
-
-SQL is based around the idea that you have tables and tables contain data.
+SQL is based around the idea that you have tables, and tables contain data.
 You can create, modify, and inspect tables.
 Let's start with that in Materialize.
 
@@ -45,36 +43,37 @@ In that case, and to put us all on the same page, we'll fire up a load generatin
 -- Create a load generator source.
 CREATE SOURCE auction_house
 FROM LOAD GENERATOR AUCTION
-FOR ALL TABLES 
+FOR ALL TABLES
 WITH (SIZE = '3xsmall');
 ```
 This creates a collection of "sources": SQL tables that are populated and updated exogenously.
 You can read from these sources, but you cannot write to them (with e.g. `UPDATE` or `DELETE`).
 
-You can see the available sources with Materialize's `show sources` command.
-Notice how we have created a whole bundle of them all at once; they all related to each other other!
+You can see the available sources with Materialize's `SHOW SOURCES` command.
+Notice how we have created a whole bundle of them all at once; they're all related to each other!
+
 ```
-materialize=> show sources;
-          name          |      type      |  size   
+materialize=> SHOW SOURCES;
+          name          |      type      |  size
 ------------------------+----------------+---------
- accounts               | subsource      | 
+ accounts               | subsource      |
  auction_house          | load-generator | 3xsmall
- auction_house_progress | progress       | 
- auctions               | subsource      | 
- bids                   | subsource      | 
- organizations          | subsource      | 
- users                  | subsource      | 
+ auction_house_progress | progress       |
+ auctions               | subsource      |
+ bids                   | subsource      |
+ organizations          | subsource      |
+ users                  | subsource      |
 (7 rows)
 
-materialize=> 
+materialize=>
 ```
 Those sources with type `subsource` contain the generated data.
 The `load-generator` source is a reference to the bundle of sources (and is not itself queryable), and the `progress` source provides consistency information (and is an advanced topic).
 
-You can inspect each `subsource` with Materialize's `show columns` command.
+You can inspect each `subsource` with Materialize's `SHOW COLUMNS` command.
 ```
-materialize=> show columns from auctions;
-   name   | nullable |           type           
+materialize=> SHOW COLUMNS FROM auctions;
+   name   | nullable |           type
 ----------+----------+--------------------------
  id       | f        | bigint
  seller   | f        | bigint
@@ -82,7 +81,7 @@ materialize=> show columns from auctions;
  end_time | f        | timestamp with time zone
 (4 rows)
 
-materialize=> 
+materialize=>
 ```
 Of course, you could also `SELECT * FROM auctions` to see the column names.
 As more auctions are introduced over time, this will become an increasingly unappealing way to get the column information.
@@ -144,7 +143,7 @@ At this point we can read results directly out of the index, without re-evaluati
 ```sql
 SELECT * FROM max_bid_by_auction;
 ```
-This should go substantially faster than querying the view without the index. 
+This should go substantially faster than querying the view without the index.
 The results are resident in memory ready to go, rather than re-evaluated when you ask.
 
 The data are also readily available for fast input to other queries.
@@ -154,7 +153,7 @@ SELECT COUNT(*) FROM max_bid_by_auction;
 Although we are doing more than just reading out of `max_bid_by_auction`, we can connect what we have for it in to the count query and save ourself a lot of time and effort.
 
 All indexes in Materialize are on a set of columns of the relation.
-When you `SELECT` constraining those columns to literal values, Materialize will do an efficient indexed look-up rather than a full scan. 
+When you `SELECT` constraining those columns to literal values, Materialize will do an efficient indexed look-up rather than a full scan.
 In the case of `max_bids_by_auction`, the default index uses `auction_id` (as Materialize can see that it is a unique key for the relation).
 
 ```sql
@@ -182,7 +181,7 @@ You may have noticed that the results to certain queries change.
 At the same time, it's potentially pretty annoying to have to visually scan `max_bid_by_auction` looking for changed results.
 Materialize augments `SELECT` with a subscription counterpart `SUBSCRIBE`, which provides the results `SELECT` would give you, followed by a continually running changefeed.
 
-You may want to use `psql` for these commands, as Materialize's web console SQL shell will beautify the output for you.
+You may want to use [`psql`](https://materialize.com/docs/integrations/sql-clients/#psql) for these commands, as Materialize's web console SQL shell will beautify the output for you.
 
 ```sql
 -- You'll want to use `psql` to observe this.
@@ -191,7 +190,7 @@ COPY (SUBSCRIBE max_bid_by_auction) TO stdout;
 
 The changefeed is continually updated, but it may seem ambiguous at times.
 Are there no new results because there are no changes, or because something is stuck?
-The `WITH (PROGRESS)` option adds in a heartbeart that comminicates when updates for each timestamp are complete.
+The `WITH (PROGRESS)` option adds in a heartbeart that communicates when updates for each timestamp are complete.
 
 ```sql
 -- You'll want to use `psql` to observe this.

@@ -2,7 +2,7 @@
 
 Materialize's core value proposition is about keeping SQL views up to date for you.
 Materialize does this in a way that is meant to be very predictable and reassuring, providing the strongest of database consistency levels.
-However, at the very same time it does some clever things on the side that you often expect to come into conflict with that structure: improving performance, flexibility, and scalability. 
+However, at the very same time it does some clever things on the side that you often expect to come into conflict with that structure: improving performance, flexibility, and scalability.
 
 We will hit on a few of these, many of which play a part in bringing a real application to life.
 1. [Serializability, Linearizability, and Transactions](#serializability-linearizability-and-transactions)
@@ -27,7 +27,7 @@ SELECT mz_now(), COUNT(*) FROM auctions;
 ```
 
 Serializability is a very powerful property, but one you may not notice until you don't have it.
-With serializability, all views are always "in sync". 
+With serializability, all views are always "in sync".
 If you compute the same thing two different ways, their content will always be identical.
 If you collate independently defined views, their results are always internally consistent.
 If you and your colleagues produce results at the same `mz_now()`, your numbers will all add up.
@@ -65,9 +65,9 @@ SET transaction_isolation = 'strict serializable';
 
 ---
 
-**CHALLENGE**: Set your isolation level to `'serializable'` and see if you can frame two queries that produce `mz_now()` values in the wrong order. Make sure to put `mz_now()` as one of the things you select. As a hint, compare the times you see selecting from tables and base sources from the times you see selecting out of indexed views.
+**CHALLENGE**: Set your isolation level to `serializable` and see if you can frame two queries that produce `mz_now()` values in the wrong order. Make sure to put `mz_now()` as one of the things you select. As a hint, compare the times you see selecting from tables and base sources from the times you see selecting out of indexed views.
 
-Set your isolation level back to `'strict serializable'` and see what happens when you run the same sorts of queries. Do you see the ordering anomalies (we hope not), and if not what do you see instead?
+Set your isolation level back to `strict serializable` and see what happens when you run the same sorts of queries. Do you see the ordering anomalies (we hope not), and if not what do you see instead?
 
 ---
 
@@ -118,7 +118,7 @@ Indexes are local to a cluster.
 The resources consumed by an index, and the value provided to queries by the index, are restricted to the cluster where the index was created.
 If your use case requires indexes that come at some cost, memory and computation, it may make sense to provision an isolated cluster to ensure you get the intended benefits of the indexes *and* do not impose on other work.
 
-To share derived results between clusters Materialize provides [materialized views](https://materialize.com/docs/sql/create-materialized-view/).
+To share derived results between clusters, Materialize provides [materialized views](https://materialize.com/docs/sql/create-materialized-view/).
 These are views whose results are recorded to persistent storage, like a table or source, and are available across clusters.
 Unlike indexes, they are not resident in memory nor randomly accessible by key columns.
 Like indexes, they allow you to avoid re-computing the same views.
@@ -135,28 +135,28 @@ This means that you can change the replica allocation to a cluster seamlessly, b
 
 ---
 
-**CHALLENGE**: Having created a new cluster, see if you can overwhelm it with complex queries and/or indexes. 
+**CHALLENGE**: Having created a new cluster, see if you can overwhelm it with complex queries and/or indexes.
 Joining data with itself and indexing the results is often a good way to do this.
 Confirm that you still have interactive, performant access to the `default` cluster.
 Clean up the overwhelmed cluster by dropping the expensive indexes or canceling the expensive queries
 
 ---
 
-## `EXPLAIN`-ing querys
+## `EXPLAIN`-ing queries
 
-It isn't always abvious what will happen when you `SELECT` or `CREATE VIEW`.
+It isn't always obvious what will happen when you `SELECT` or `CREATE VIEW`.
 The [`EXPLAIN` command](https://materialize.com/docs/sql/explain/) can show you what Materialize plans to do with your command.
 ```sql
 -- The query plan Materialize will use for the `SELECT` command.
-EXPLAIN 
+EXPLAIN
 SELECT DISTINCT ON(auction_id) auction_id, amount, id as bid_id
 FROM bids_with_auction
 WHERE bid_time <= end_time
 ORDER BY auction_id, amount DESC;
 ```
 The `EXPLAIN` command reveals detailed information about the structure of the query plan.
-The output is a tree whose root (at the top) are the query results, and whose branches are the inputs that will be brought together to compute the result. 
-In this case, it shows us that the query involves a join, and a "top k" operator:
+The output is a tree whose root (at the top) are the query results, and whose branches are the inputs that will be brought together to compute the result.
+In this case, it shows us that the query involves a join, and a `TopK` operator:
 ```
 Optimized Plan
 Explained Query:
@@ -173,14 +173,14 @@ Explained Query:
                 Get materialize.public.auctions
 ```
 
---- 
+---
 
 **CHALLENGE:** Introduce a `mz_now() <= end_time` constraint to focus on recent auctions.
 Notice where that predicate appears, and the newly reported `Source` output. Use `EXPLAIN` with your modified view definition bounding `bids` (you can use `EXPLAIN VIEW <view name>` to get explanations for existing views). Confirm that both `auctions` and `bids` have a `Source` output that correspond to the bounds you introduced.
 
 ---
 
-You can also use our dataflow visualizer. 
+You can also use our dataflow visualizer.
 From the Materialize Console, navigate to "Connect", and then the "External tools" tab.
 You can `https://` to the HOST there, use the USER to log in, and provide an App password as generated below.
 This gives you access to several dataflow visualizers that can show you the shape of the dataflows, numbers of records that have moved along each edge, and number of records retained in each arrangement.
@@ -191,7 +191,7 @@ You should also be able to use an experimental visualizer through the web consol
 
 ## Temporal Filters and `mz_now()`
 
-As our auction example continues the volume of data will only increase.
+As our auction example continues, the volume of data will only increase.
 Ad-hoc queries will take increasing amounts of time to run; our indexes will grow without bound.
 
 However, auctions have an `end_time` column, indicating when they conclude.
@@ -205,8 +205,8 @@ Written this way, Materialize can also see how the results change as a function 
 ```sql
 -- Select auctions that ended only recently.
 CREATE VIEW recent_auctions AS
-SELECT * 
-FROM auctions 
+SELECT *
+FROM auctions
 WHERE mz_now() <= end_time + INTERVAL '1 minute';
 
 -- We can keep the view up to date despite `mz_now()`.
@@ -219,7 +219,7 @@ This can be especially helpful when your data are collections of events, which a
 
 ---
 
-**CHALLENGE**: Our `max_bid_by_auction` view uses all of `auctions`. Rewrite it to use only those `auctions` that have not yet ended. 
+**CHALLENGE**: Our `max_bid_by_auction` view uses all records in `auctions`. Rewrite it to use only those `auctions` that have not yet ended.
 
 When you create an index on the updated `max_bid_by_auction` view, will that index have a bounded footprint? What if anything might allow us to forget about records in `bids`? Will we just have to maintain all bids forever? What assumptions would allow you to update the view again in a way that will maintain only recent bids? How can you validate such an assumption?
 
@@ -233,8 +233,8 @@ Use the dataflow visualizer to observe the number of records maintained in each 
 Quite often, your continually changing data are often append-only: records are added and never removed.
 This would eventually overwhelm conventional databases, but it needn't overwhelm Materialize when it is instructed to maintain specific queries.
 
-The opportunities here are subtle. 
-If we are tracking the MAX of a column in an append-only collection, we can be clever and only retain the maximum value, rather than all possible values (which we might need if you could remove the current maximum).
+The opportunities here are subtle.
+If we are tracking the `MAX` of a column in an append-only collection, we can be clever and only retain the maximum value, rather than all possible values (which we might need if you could remove the current maximum).
 If we are keeping the `LIMIT 1` of an append-only collection, we can retain the best row itself rather than an entire collection.
 These tricks apply as well to operations on derived views as much as on raw collections.
 
@@ -318,4 +318,4 @@ Maintaining `COUNT(*)` of the results, for example, should have a nominal impact
 
 ---
 
-**CHALLENGE**: Use a dataflow visualizer to check out the plan for a maintained `SELECT COUNT(*) FROM max_bid_by_auction_lean`. 
+**CHALLENGE**: Use the dataflow visualizer to check out the plan for a maintained `SELECT COUNT(*) FROM max_bid_by_auction_lean` query.
