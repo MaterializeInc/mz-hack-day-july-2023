@@ -90,7 +90,7 @@ As more auctions are introduced over time, this will become an increasingly unap
 
 Let's start to build up more interesting business logic than counting the number of records.
 
-Records in `bids` reference records in `auctions` though their `auction_id` column.
+Records in `bids` reference records in `auctions` through their `auction_id` column.
 We can connect bids with their auctions using a SQL join.
 ```sql
 -- Enrich each bid with its associated auction.
