@@ -5,11 +5,11 @@ These electives are available for you to choose from, in any order, as your appe
 There are fewer "correct answers" here, but each should have the opportunity to learn and do something interesting.
 
 1. [`WITH MUTUALLY RECURSIVE` (e.g. auction bidder cycles)](#recursive-queries)
-1. [Ecosystem integrations (e.g. dbt, Metabase)](#ecosystem-integrations)
 1. [Query optimization, performance diagnosis](#query-diagnosis-and-optimization)
+1. [Explore ecosystem integrations (e.g. dbt, Metabase)](#explore-ecosystem-integrations)
+1. [Explore a Kafka data source](#explore-a-kafka-data-source)
 1. [Build a game](#build-a-game).
 1. Sources, sinks (?)
-1. E-commerce stack
 
 ## Recursive Queries
 
@@ -107,7 +107,7 @@ Can you modify the query to leave breadcrumbs behind to make this discovery effi
 
 
 
-## Ecosystem integrations
+## Explore ecosystem integrations
 
 So far, you've been interacting with Materialize using a SQL shell. Is that all there is to it? — you might be asking yourself. Definitely not! To the outside world, Materialize presents as a PostgreSQL database (via `pgwire`), which means it integrates with many tools in the data ecosystem out-of-the-box.
 
@@ -120,6 +120,11 @@ One fun challenge is to convert the set of SQL transformations you've run so far
 ### Metabase
 
 You can also serve the results being maintained in Materialize to a BI tool, and build dashboards that don't break bank every time you refresh them. We suggest you [sign up for a free trial of Metabase](https://store.metabase.com/free-trial) and try to create some visualizations based on your auction data. Follow [this guide](https://materialize.com/docs/serve-results/metabase/) to get started!
+
+## Explore a Kafka data source
+
+Materialize allows you to work with streaming data from multiple external data sources, like [Kafka](https://materialize.com/docs/sql/create-source/kafka/) and [PostgreSQL](https://materialize.com/docs/sql/create-source/postgres/). To get you started with a more realistic source, we set up a Kafka cluster with some sample data that you can use to explore and build. Head over to [`ecommerce-demo`](./ecommerce-demo) for details on how to connect to the Hack Day Kafka broker.
+
 
 ## Query Diagnosis and Optimization
 
